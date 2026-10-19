@@ -1,0 +1,875 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mon ENT - Espace Numérique de Travail</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Supabase JS -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <!-- jsPDF pour la génération des PDF -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    .edt-grid {
+      display: grid;
+      grid-template-columns: 70px repeat(5, 1fr);
+      grid-auto-rows: 60px;
+    }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-800 font-sans min-h-screen flex flex-col">
+
+  <!-- ECRAN DE CONNEXION -->
+  <div id="login-screen" class="flex-1 flex items-center justify-center p-4">
+    <div class="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md border border-slate-200">
+      <div class="text-center mb-6">
+        <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-indigo-600 text-white mb-4 shadow-md">
+          <i data-lucide="graduation-cap" class="w-8 h-8"></i>
+        </div>
+        <h1 class="text-2xl font-bold text-slate-900">Portail ENT</h1>
+        <p class="text-sm text-slate-500">Connectez-vous à votre espace numérique</p>
+      </div>
+      <form id="login-form" class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1">Identifiant</label>
+          <input type="text" id="login-username" required placeholder="ex: admin.direction" class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1">Mot de passe</label>
+          <input type="password" id="login-password" required placeholder="••••••••" class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
+        </div>
+        <p id="login-error" class="text-red-500 text-sm hidden"></p>
+        <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2.5 rounded-lg transition shadow">
+          Se connecter
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODALE PREMIERE CONNEXION : CHANGEMENT DE MOT DE PASSE -->
+  <div id="first-login-modal" class="fixed inset-0 bg-black/60 backdrop-blur-sm hidden items-center justify-center z-50 p-4">
+    <div class="bg-white p-6 rounded-2xl shadow-2xl max-w-md w-full">
+      <h2 class="text-xl font-bold text-slate-900 mb-2">Première connexion 🔒</h2>
+      <p class="text-sm text-slate-600 mb-4">Pour des raisons de sécurité, vous devez personnaliser votre mot de passe provisoire avant d'accéder à l'ENT.</p>
+      <form id="change-pwd-form" class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1">Nouveau mot de passe</label>
+          <input type="password" id="new-password" required minlength="6" class="w-full px-4 py-2 border rounded-lg">
+        </div>
+        <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2 rounded-lg">
+          Enregistrer et accéder à l'ENT
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- APPLICATION PRINCIPALE -->
+  <div id="app-screen" class="hidden flex-1 flex flex-col">
+    <!-- Barre de navigation supérieure -->
+    <header class="bg-indigo-900 text-white shadow-md px-6 py-3 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <i data-lucide="layout-grid" class="w-6 h-6 text-indigo-300"></i>
+        <span class="font-bold text-lg tracking-wide">PRONOTE <span class="text-xs bg-indigo-700 px-2 py-0.5 rounded text-indigo-200">ENT+</span></span>
+      </div>
+
+      <nav class="flex space-x-2" id="main-nav">
+        <button onclick="switchTab('home')" class="nav-btn px-4 py-2 rounded-lg text-sm font-medium bg-indigo-800 text-white">Accueil</button>
+        <button onclick="switchTab('edt')" class="nav-btn px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-800 text-indigo-100">Emploi du temps</button>
+        <button onclick="switchTab('messagerie')" class="nav-btn px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-800 text-indigo-100">Messagerie</button>
+        <button onclick="switchTab('direction')" id="nav-direction" class="nav-btn hidden px-4 py-2 rounded-lg text-sm font-medium bg-amber-600 hover:bg-amber-500 text-white">⚙️ Console Direction</button>
+      </nav>
+
+      <div class="flex items-center space-x-4">
+        <div class="text-right">
+          <div id="user-display-name" class="text-sm font-semibold">Nom Prénom</div>
+          <div id="user-display-role" class="text-xs text-indigo-300 uppercase">Rôle</div>
+        </div>
+        <button onclick="logout()" class="p-2 hover:bg-indigo-800 rounded-lg text-indigo-200" title="Déconnexion">
+          <i data-lucide="log-out" class="w-5 h-5"></i>
+        </button>
+      </div>
+    </header>
+
+    <!-- CONTENU DES ONGLETS -->
+    <main class="flex-1 p-6 max-w-7xl w-full mx-auto space-y-6">
+
+      <!-- 1. ONGLET ACCUEIL -->
+      <section id="tab-home" class="tab-content grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 md:col-span-2">
+          <h2 class="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+            <i data-lucide="sun" class="w-5 h-5 text-amber-500"></i> Bienvenue sur votre espace
+          </h2>
+          <p class="text-slate-600 text-sm leading-relaxed">
+            Consultez votre emploi du temps actualisé en temps réel, échangez avec les professeurs, la vie scolaire et la direction via la messagerie interne.
+          </p>
+          <div id="home-quick-info" class="mt-6 grid grid-cols-2 gap-4"></div>
+        </div>
+        <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+          <h2 class="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+            <i data-lucide="bell" class="w-5 h-5 text-indigo-600"></i> Derniers messages
+          </h2>
+          <div id="home-messages-preview" class="text-sm text-slate-500 space-y-2">
+            Aucun nouveau message.
+          </div>
+        </div>
+      </section>
+
+      <!-- 2. ONGLET EMPLOI DU TEMPS -->
+      <section id="tab-edt" class="tab-content hidden space-y-4">
+        <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-wrap items-center justify-between gap-4">
+          <div class="flex items-center space-x-3">
+            <label class="text-sm font-semibold text-slate-700">Afficher l'EDT de :</label>
+            <select id="edt-filter-type" onchange="loadEdtFilterOptions()" class="border rounded-lg px-3 py-1.5 text-sm">
+              <option value="classe">Une Classe</option>
+              <option value="prof">Un Professeur</option>
+            </select>
+            <select id="edt-filter-target" onchange="renderTimetable()" class="border rounded-lg px-3 py-1.5 text-sm font-medium text-indigo-700"></select>
+          </div>
+          <button onclick="downloadEdtPDF()" class="bg-slate-800 hover:bg-slate-900 text-white text-sm px-4 py-2 rounded-lg flex items-center gap-2">
+            <i data-lucide="download" class="w-4 h-4"></i> Télécharger en PDF
+          </button>
+        </div>
+
+        <!-- Grille d'emploi du temps -->
+        <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+          <div class="grid grid-cols-6 bg-slate-800 text-white text-center text-sm font-semibold py-2.5">
+            <div>Heure</div>
+            <div>Lundi</div>
+            <div>Mardi</div>
+            <div>Mercredi</div>
+            <div>Jeudi</div>
+            <div>Vendredi</div>
+          </div>
+          <div id="edt-container" class="divide-y divide-slate-200"></div>
+        </div>
+      </section>
+
+      <!-- 3. ONGLET MESSAGERIE -->
+      <section id="tab-messagerie" class="tab-content hidden grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
+          <h3 class="font-bold text-slate-800 mb-4">Nouveau message</h3>
+          <form id="send-msg-form" class="space-y-3">
+            <div>
+              <label class="block text-xs font-semibold uppercase text-slate-500 mb-1">Destinataire</label>
+              <select id="msg-receiver" required class="w-full border rounded-lg px-3 py-2 text-sm"></select>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold uppercase text-slate-500 mb-1">Objet</label>
+              <input type="text" id="msg-subject" required class="w-full border rounded-lg px-3 py-2 text-sm">
+            </div>
+            <div>
+              <label class="block text-xs font-semibold uppercase text-slate-500 mb-1">Message</label>
+              <textarea id="msg-body" rows="4" required class="w-full border rounded-lg px-3 py-2 text-sm"></textarea>
+            </div>
+            <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 rounded-lg text-sm">
+              Envoyer
+            </button>
+          </form>
+        </div>
+
+        <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200 md:col-span-2">
+          <h3 class="font-bold text-slate-800 mb-4">Boîte de réception</h3>
+          <div id="inbox-list" class="space-y-3"></div>
+        </div>
+      </section>
+
+      <!-- 4. ONGLET DIRECTION (ADMINISTRATION TOTALE) -->
+      <section id="tab-direction" class="tab-content hidden space-y-6">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+
+          <!-- Création Classes / Matières / Salles -->
+          <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200 space-y-6">
+            <div>
+              <h3 class="font-bold text-slate-800 mb-2">1. Créer une Classe (+ GR1 & GR2 auto)</h3>
+              <form id="form-add-class" class="flex gap-2">
+                <input type="text" id="class-name" placeholder="ex: 3ème A" required class="flex-1 border rounded-lg px-3 py-1.5 text-sm">
+                <button class="bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium">Créer</button>
+              </form>
+            </div>
+
+            <div>
+              <h3 class="font-bold text-slate-800 mb-2">2. Créer une Matière</h3>
+              <form id="form-add-subject" class="flex gap-2">
+                <input type="text" id="subject-name" placeholder="ex: Mathématiques" required class="flex-1 border rounded-lg px-3 py-1.5 text-sm">
+                <input type="color" id="subject-color" value="#3b82f6" class="h-9 w-10 border rounded cursor-pointer">
+                <button class="bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium">Créer</button>
+              </form>
+            </div>
+
+            <div>
+              <h3 class="font-bold text-slate-800 mb-2">3. Créer une Salle</h3>
+              <form id="form-add-room" class="flex gap-2">
+                <input type="text" id="room-name" placeholder="ex: Salle 104" required class="flex-1 border rounded-lg px-3 py-1.5 text-sm">
+                <button class="bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium">Créer</button>
+              </form>
+            </div>
+          </div>
+
+          <!-- Création Utilisateurs & Import Élèves -->
+          <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200 space-y-4">
+            <h3 class="font-bold text-slate-800">4. Ajouter un Membre (Élève, Prof, Vie Scolaire...)</h3>
+            <form id="form-add-user" class="space-y-3 text-sm">
+              <div class="grid grid-cols-2 gap-2">
+                <input type="text" id="user-lastname" placeholder="NOM" required class="border rounded-lg px-3 py-1.5 uppercase">
+                <input type="text" id="user-firstname" placeholder="Prénom" required class="border rounded-lg px-3 py-1.5">
+              </div>
+              <select id="user-role" onchange="toggleUserRoleFields()" class="w-full border rounded-lg px-3 py-1.5">
+                <option value="eleve">Élève</option>
+                <option value="professeur">Professeur</option>
+                <option value="vie_scolaire">Vie Scolaire</option>
+                <option value="direction">Direction</option>
+              </select>
+              <div id="field-user-class">
+                <select id="user-class" class="w-full border rounded-lg px-3 py-1.5"></select>
+              </div>
+              <div id="field-user-subject" class="hidden">
+                <select id="user-subject" class="w-full border rounded-lg px-3 py-1.5"></select>
+              </div>
+              <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2 rounded-lg">
+                Générer le compte + Identifiants complexes
+              </button>
+            </form>
+
+            <hr class="my-4">
+            <h4 class="font-semibold text-xs uppercase text-slate-500">Import rapide d'une liste d'élèves (Répartition GR1/GR2 auto)</h4>
+            <textarea id="bulk-students" rows="3" placeholder="Un élève par ligne : NOM Prénom&#10;Ex:&#10;DUPONT Jean&#10;MARTIN Alice" class="w-full border rounded-lg p-2 text-xs"></textarea>
+            <button onclick="importBulkStudents()" class="w-full bg-slate-800 text-white py-1.5 rounded-lg text-xs font-semibold">
+              Importer dans la classe sélectionnée (Moitié GR1 / Moitié GR2)
+            </button>
+          </div>
+
+          <!-- Création de cours dans l'EDT -->
+          <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200 space-y-3">
+            <h3 class="font-bold text-slate-800">5. Ajouter un cours à l'EDT</h3>
+            <p class="text-xs text-slate-500">Le cours sera automatiquement placé au même endroit sur l'EDT de la classe ET sur l'EDT du professeur.</p>
+            <form id="form-add-course" class="space-y-2.5 text-sm">
+              <select id="course-class" onchange="loadClassGroupsForCourse()" required class="w-full border rounded-lg px-3 py-1.5"></select>
+              <select id="course-group" class="w-full border rounded-lg px-3 py-1.5">
+                <option value="">Classe entière</option>
+              </select>
+              <select id="course-teacher" onchange="autoSelectTeacherSubject()" required class="w-full border rounded-lg px-3 py-1.5"></select>
+              <select id="course-subject" required class="w-full border rounded-lg px-3 py-1.5"></select>
+              <select id="course-room" required class="w-full border rounded-lg px-3 py-1.5"></select>
+              <div class="grid grid-cols-3 gap-2">
+                <select id="course-day" required class="border rounded-lg px-2 py-1.5">
+                  <option value="1">Lundi</option>
+                  <option value="2">Mardi</option>
+                  <option value="3">Mercredi</option>
+                  <option value="4">Jeudi</option>
+                  <option value="5">Vendredi</option>
+                </select>
+                <select id="course-start" required class="border rounded-lg px-2 py-1.5">
+                  <option value="08:00:00">08h00</option>
+                  <option value="09:00:00">09h00</option>
+                  <option value="10:00:00">10h00</option>
+                  <option value="11:00:00">11h00</option>
+                  <option value="13:00:00">13h00</option>
+                  <option value="14:00:00">14h00</option>
+                  <option value="15:00:00">15h00</option>
+                  <option value="16:00:00">16h00</option>
+                </select>
+                <select id="course-end" required class="border rounded-lg px-2 py-1.5">
+                  <option value="09:00:00">09h00</option>
+                  <option value="10:00:00">10h00</option>
+                  <option value="11:00:00">11h00</option>
+                  <option value="12:00:00">12h00</option>
+                  <option value="14:00:00">14h00</option>
+                  <option value="15:00:00">15h00</option>
+                  <option value="16:00:00">16h00</option>
+                  <option value="17:00:00">17h00</option>
+                </select>
+              </div>
+              <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 rounded-lg">
+                Ajouter au planning
+              </button>
+            </form>
+          </div>
+        </div>
+
+        <!-- Génération des PDF d'identifiants -->
+        <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
+          <div class="flex flex-wrap items-center justify-between gap-4 mb-4">
+            <div>
+              <h3 class="font-bold text-slate-800">6. Comptes & Fiches d'identifiants PDF</h3>
+              <p class="text-xs text-slate-500">Téléchargez une fiche personnalisée pour un membre ou un PDF groupé pour toute une catégorie.</p>
+            </div>
+            <div class="flex flex-wrap gap-2">
+              <button onclick="generateBatchCredentialsPDF('eleve')" class="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold px-3 py-2 rounded-lg border border-indigo-200">
+                📄 PDF Tous les Élèves
+              </button>
+              <button onclick="generateBatchCredentialsPDF('professeur')" class="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold px-3 py-2 rounded-lg border border-indigo-200">
+                📄 PDF Tous les Profs
+              </button>
+              <button onclick="generateBatchCredentialsPDF('vie_scolaire')" class="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold px-3 py-2 rounded-lg border border-indigo-200">
+                📄 PDF Vie Scolaire
+              </button>
+            </div>
+          </div>
+
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-sm border-collapse">
+              <thead>
+                <tr class="border-b bg-slate-50 text-slate-600 text-xs uppercase">
+                  <th class="py-2 px-3">Nom Prénom</th>
+                  <th class="py-2 px-3">Profil</th>
+                  <th class="py-2 px-3">Classe / Groupe</th>
+                  <th class="py-2 px-3">Identifiant</th>
+                  <th class="py-2 px-3">MDP Provisoire</th>
+                  <th class="py-2 px-3 text-right">Fiche PDF individuelle</th>
+                </tr>
+              </thead>
+              <tbody id="users-table-body" class="divide-y"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <script>
+    // =========================================================================
+    // CONFIGURATION SUPABASE (REMPLACE PAR TES CLES SUPABASE ICI)
+    // =========================================================================
+    const SUPABASE_URL = 'https://nebjmjephubppfktndut.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5lYmptamVwaHVicHBma3RuZHV0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI0MTI1NjQsImV4cCI6MjEwNzk4ODU2NH0.eTnA8-TC7W-X84qVR93hGXWJ47HJpTBHSqLpwj7_Wpk';
+    const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    let currentUser = null;
+    let allUsers = [];
+    let allClasses = [];
+    let allGroups = [];
+    let allSubjects = [];
+    let allRooms = [];
+    let allCourses = [];
+
+    lucide.createIcons();
+
+    // Génère un mot de passe complexe aléatoire
+    function generateComplexPassword(length = 10) {
+      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%&*';
+      let pwd = '';
+      for (let i = 0; i < length; i++) {
+        pwd += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      return pwd;
+    }
+
+    // Génère un identifiant propre (prenom.nom)
+    function generateUsername(firstName, lastName) {
+      const clean = (str) => str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, '');
+      return `${clean(firstName)}.${clean(lastName)}${Math.floor(10 + Math.random() * 89)}`;
+    }
+
+    // =========================================================================
+    // CONNEXION & PREMIERE CONNEXION
+    // =========================================================================
+    document.getElementById('login-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const username = document.getElementById('login-username').value.trim();
+      const password = document.getElementById('login-password').value;
+      const errEl = document.getElementById('login-error');
+
+      const { data, error } = await supabaseClient
+        .from('users_ent')
+        .select('*')
+        .eq('username', username)
+        .eq('password', password)
+        .single();
+
+      if (error || !data) {
+        errEl.textContent = "Identifiant ou mot de passe incorrect.";
+        errEl.classList.remove('hidden');
+        return;
+      }
+
+      errEl.classList.add('hidden');
+      currentUser = data;
+
+      if (currentUser.must_change_password) {
+        document.getElementById('first-login-modal').classList.remove('hidden');
+        document.getElementById('first-login-modal').classList.add('flex');
+      } else {
+        launchApp();
+      }
+    });
+
+    document.getElementById('change-pwd-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const newPassword = document.getElementById('new-password').value;
+      await supabaseClient
+        .from('users_ent')
+        .update({ password: newPassword, must_change_password: false })
+        .eq('id', currentUser.id);
+
+      currentUser.must_change_password = false;
+      document.getElementById('first-login-modal').classList.add('hidden');
+      document.getElementById('first-login-modal').classList.remove('flex');
+      launchApp();
+    });
+
+    function logout() {
+      currentUser = null;
+      document.getElementById('app-screen').classList.add('hidden');
+      document.getElementById('login-screen').classList.remove('hidden');
+    }
+
+    async function launchApp() {
+      document.getElementById('login-screen').classList.add('hidden');
+      document.getElementById('app-screen').classList.remove('hidden');
+      document.getElementById('user-display-name').textContent = `${currentUser.last_name} ${currentUser.first_name}`;
+      document.getElementById('user-display-role').textContent = currentUser.role.replace('_', ' ');
+
+      if (currentUser.role === 'direction') {
+        document.getElementById('nav-direction').classList.remove('hidden');
+      } else {
+        document.getElementById('nav-direction').classList.add('hidden');
+      }
+
+      await refreshAllData();
+      switchTab('home');
+    }
+
+    function switchTab(tabName) {
+      document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+      document.getElementById(`tab-${tabName}`).classList.remove('hidden');
+      if (tabName === 'edt') renderTimetable();
+      if (tabName === 'messagerie') loadMessages();
+    }
+
+    // =========================================================================
+    // CHARGEMENT DES DONNEES DEPUIS SUPABASE
+    // =========================================================================
+    async function refreshAllData() {
+      const [uRes, cRes, gRes, sRes, rRes, tRes] = await Promise.all([
+        supabaseClient.from('users_ent').select('*').order('last_name'),
+        supabaseClient.from('classes').select('*').order('name'),
+        supabaseClient.from('class_groups').select('*').order('name'),
+        supabaseClient.from('subjects').select('*').order('name'),
+        supabaseClient.from('rooms').select('*').order('name'),
+        supabaseClient.from('timetable').select('*')
+      ]);
+
+      allUsers = uRes.data || [];
+      allClasses = cRes.data || [];
+      allGroups = gRes.data || [];
+      allSubjects = sRes.data || [];
+      allRooms = rRes.data || [];
+      allCourses = tRes.data || [];
+
+      populateSelects();
+      renderUsersTable();
+      loadEdtFilterOptions();
+    }
+
+    function populateSelects() {
+      const classOptions = allClasses.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+      document.getElementById('user-class').innerHTML = classOptions || '<option value="">Aucune classe</option>';
+      document.getElementById('course-class').innerHTML = classOptions || '<option value="">Aucune classe</option>';
+
+      const subjectOptions = allSubjects.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+      document.getElementById('user-subject').innerHTML = subjectOptions || '<option value="">Aucune matière</option>';
+      document.getElementById('course-subject').innerHTML = subjectOptions || '<option value="">Aucune matière</option>';
+
+      const roomOptions = allRooms.map(r => `<option value="${r.id}">${r.name}</option>`).join('');
+      document.getElementById('course-room').innerHTML = roomOptions || '<option value="">Aucune salle</option>';
+
+      const teachers = allUsers.filter(u => u.role === 'professeur');
+      document.getElementById('course-teacher').innerHTML = teachers.map(t => `<option value="${t.id}">M./Mme ${t.last_name} ${t.first_name}</option>`).join('') || '<option value="">Aucun professeur</option>';
+
+      document.getElementById('msg-receiver').innerHTML = allUsers
+        .filter(u => u.id !== currentUser.id)
+        .map(u => `<option value="${u.id}">${u.last_name} ${u.first_name} (${u.role})</option>`).join('');
+
+      loadClassGroupsForCourse();
+      autoSelectTeacherSubject();
+    }
+
+    function toggleUserRoleFields() {
+      const role = document.getElementById('user-role').value;
+      document.getElementById('field-user-class').classList.toggle('hidden', role !== 'eleve');
+      document.getElementById('field-user-subject').classList.toggle('hidden', role !== 'professeur');
+    }
+
+    function loadClassGroupsForCourse() {
+      const classId = document.getElementById('course-class').value;
+      const groups = allGroups.filter(g => g.class_id === classId);
+      document.getElementById('course-group').innerHTML = `<option value="">Classe entière</option>` +
+        groups.map(g => `<option value="${g.id}">Groupe ${g.name}</option>`).join('');
+    }
+
+    function autoSelectTeacherSubject() {
+      const teacherId = document.getElementById('course-teacher').value;
+      const teacher = allUsers.find(u => u.id === teacherId);
+      if (teacher && teacher.default_subject_id) {
+        document.getElementById('course-subject').value = teacher.default_subject_id;
+      }
+    }
+
+    // =========================================================================
+    // ACTIONS DIRECTION : CLASSES (AVEC GR1/GR2 AUTO), MATIERES, SALLES, COMPTES
+    // =========================================================================
+    document.getElementById('form-add-class').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const name = document.getElementById('class-name').value.trim();
+      const { data: newClass, error } = await supabaseClient.from('classes').insert({ name }).select().single();
+      if (!error && newClass) {
+        // Création automatique de GR1 et GR2
+        await supabaseClient.from('class_groups').insert([
+          { name: 'GR1', class_id: newClass.id },
+          { name: 'GR2', class_id: newClass.id }
+        ]);
+        document.getElementById('class-name').value = '';
+        await refreshAllData();
+      }
+    });
+
+    document.getElementById('form-add-subject').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const name = document.getElementById('subject-name').value.trim();
+      const color = document.getElementById('subject-color').value;
+      await supabaseClient.from('subjects').insert({ name, color });
+      document.getElementById('subject-name').value = '';
+      await refreshAllData();
+    });
+
+    document.getElementById('form-add-room').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const name = document.getElementById('room-name').value.trim();
+      await supabaseClient.from('rooms').insert({ name });
+      document.getElementById('room-name').value = '';
+      await refreshAllData();
+    });
+
+    // Répartition automatique GR1 (première moitié) et GR2 (seconde moitié) d'une classe
+    async function rebalanceClassGroups(classId) {
+      const students = allUsers
+        .filter(u => u.role === 'eleve' && u.class_id === classId)
+        .sort((a, b) => a.last_name.localeCompare(b.last_name));
+
+      const gr1 = allGroups.find(g => g.class_id === classId && g.name === 'GR1');
+      const gr2 = allGroups.find(g => g.class_id === classId && g.name === 'GR2');
+      if (!gr1 || !gr2) return;
+
+      const half = Math.ceil(students.length / 2);
+      for (let i = 0; i < students.length; i++) {
+        const targetGroupId = i < half ? gr1.id : gr2.id;
+        await supabaseClient.from('users_ent').update({ group_id: targetGroupId }).eq('id', students[i].id);
+      }
+    }
+
+    document.getElementById('form-add-user').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const last_name = document.getElementById('user-lastname').value.trim().toUpperCase();
+      const first_name = document.getElementById('user-firstname').value.trim();
+      const role = document.getElementById('user-role').value;
+      const class_id = role === 'eleve' ? document.getElementById('user-class').value : null;
+      const default_subject_id = role === 'professeur' ? document.getElementById('user-subject').value : null;
+
+      const username = generateUsername(first_name, last_name);
+      const pwd = generateComplexPassword();
+
+      await supabaseClient.from('users_ent').insert({
+        username, password: pwd, temp_password: pwd, must_change_password: true,
+        first_name, last_name, role, class_id, default_subject_id
+      });
+
+      document.getElementById('user-lastname').value = '';
+      document.getElementById('user-firstname').value = '';
+      await refreshAllData();
+      if (role === 'eleve' && class_id) {
+        await rebalanceClassGroups(class_id);
+        await refreshAllData();
+      }
+    });
+
+    async function importBulkStudents() {
+      const raw = document.getElementById('bulk-students').value.trim();
+      const classId = document.getElementById('user-class').value;
+      if (!raw || !classId) return alert("Sélectionnez une classe et collez une liste d'élèves.");
+
+      const lines = raw.split('\n').map(l => l.trim()).filter(Boolean);
+      const toInsert = lines.map(line => {
+        const parts = line.split(' ');
+        const last_name = parts[0].toUpperCase();
+        const first_name = parts.slice(1).join(' ') || 'Élève';
+        const pwd = generateComplexPassword();
+        return {
+          username: generateUsername(first_name, last_name),
+          password: pwd,
+          temp_password: pwd,
+          must_change_password: true,
+          first_name,
+          last_name,
+          role: 'eleve',
+          class_id: classId
+        };
+      });
+
+      await supabaseClient.from('users_ent').insert(toInsert);
+      document.getElementById('bulk-students').value = '';
+      await refreshAllData();
+      await rebalanceClassGroups(classId);
+      await refreshAllData();
+      alert(`${toInsert.length} élèves importés et répartis automatiquement en GR1 et GR2 !`);
+    }
+
+    // =========================================================================
+    // GENERATION DES FICHES PDF D'IDENTIFIANTS (INDIVIDUEL & PAR PROFIL/CLASSE)
+    // =========================================================================
+    function renderUsersTable() {
+      const tbody = document.getElementById('users-table-body');
+      tbody.innerHTML = allUsers.map(u => {
+        const cls = allClasses.find(c => c.id === u.class_id);
+        const grp = allGroups.find(g => g.id === u.group_id);
+        return `
+          <tr class="hover:bg-slate-50">
+            <td class="py-2.5 px-3 font-semibold">${u.last_name} ${u.first_name}</td>
+            <td class="py-2.5 px-3"><span class="px-2 py-0.5 bg-slate-200 rounded text-xs uppercase">${u.role}</span></td>
+            <td class="py-2.5 px-3">${cls ? cls.name : '-'} ${grp ? `<span class="text-xs font-bold text-indigo-600">(${grp.name})</span>` : ''}</td>
+            <td class="py-2.5 px-3 font-mono text-xs">${u.username}</td>
+            <td class="py-2.5 px-3 font-mono text-xs text-amber-700">${u.temp_password || 'Modifié par l\'utilisateur'}</td>
+            <td class="py-2.5 px-3 text-right">
+              <button onclick="generateSingleCredentialPDF('${u.id}')" class="bg-slate-800 hover:bg-slate-900 text-white text-xs px-3 py-1.5 rounded-lg">
+                📄 Fiche PDF
+              </button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function printCredentialNotice(doc, user, yOffset) {
+      const cls = allClasses.find(c => c.id === user.class_id);
+      const grp = allGroups.find(g => g.id === user.group_id);
+      doc.setDrawColor(180);
+      doc.rect(15, yOffset, 180, 70);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(13);
+      doc.text("FICHE DE CONNEXION - ENVIRONNEMENT NUMÉRIQUE DE TRAVAIL", 22, yOffset + 12);
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(11);
+      const roleInfo = cls ? ` (${cls.name} - ${grp ? grp.name : ''})` : ` (${user.role.toUpperCase()})`;
+      const text = `Bonjour ${user.last_name} ${user.first_name}${roleInfo},\n\nAfin de vous connecter à votre Environnement Numérique de Travail (ENT),\nil vous sera nécessaire de vous munir de ces identifiants personnels :`;
+      doc.text(text, 22, yOffset + 24);
+
+      doc.setFont("courier", "bold");
+      doc.setFontSize(12);
+      doc.text(`Identifiant  : ${user.username}`, 28, yOffset + 48);
+      doc.text(`Mot de passe : ${user.temp_password || '(Déjà personnalisé)'}`, 28, yOffset + 56);
+
+      doc.setFont("helvetica", "italic");
+      doc.setFontSize(9);
+      doc.text("Lors de votre première connexion, vous serez invité(e) à modifier ce mot de passe.", 22, yOffset + 65);
+    }
+
+    function generateSingleCredentialPDF(userId) {
+      const user = allUsers.find(u => u.id === userId);
+      if (!user) return;
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+      printCredentialNotice(doc, user, 20);
+      doc.save(`Identifiants_${user.last_name}_${user.first_name}.pdf`);
+    }
+
+    function generateBatchCredentialsPDF(roleFilter) {
+      const list = allUsers.filter(u => u.role === roleFilter);
+      if (!list.length) return alert("Aucun membre trouvé dans cette catégorie.");
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+
+      list.forEach((user, index) => {
+        const slot = index % 3;
+        if (index > 0 && slot === 0) doc.addPage();
+        printCredentialNotice(doc, user, 15 + slot * 88);
+      });
+      doc.save(`Identifiants_Groupe_${roleFilter}.pdf`);
+    }
+
+    // =========================================================================
+    // EMPLOI DU TEMPS (SYNCHRONISATION AUTOMATIQUE ELEVE & PROF) + EXPORT PDF
+    // =========================================================================
+    document.getElementById('form-add-course').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const class_id = document.getElementById('course-class').value;
+      const group_id = document.getElementById('course-group').value || null;
+      const teacher_id = document.getElementById('course-teacher').value;
+      const subject_id = document.getElementById('course-subject').value;
+      const room_id = document.getElementById('course-room').value;
+      const day_of_week = parseInt(document.getElementById('course-day').value, 10);
+      const start_time = document.getElementById('course-start').value;
+      const end_time = document.getElementById('course-end').value;
+
+      await supabaseClient.from('timetable').insert({
+        class_id, group_id, teacher_id, subject_id, room_id, day_of_week, start_time, end_time
+      });
+
+      await refreshAllData();
+      alert("Cours ajouté ! Il est synchronisé dans l'EDT de la classe et dans l'EDT du professeur.");
+    });
+
+    function loadEdtFilterOptions() {
+      const type = document.getElementById('edt-filter-type').value;
+      const targetSelect = document.getElementById('edt-filter-target');
+      if (type === 'classe') {
+        targetSelect.innerHTML = allClasses.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+        if (currentUser.role === 'eleve' && currentUser.class_id) {
+          targetSelect.value = currentUser.class_id;
+        }
+      } else {
+        const profs = allUsers.filter(u => u.role === 'professeur');
+        targetSelect.innerHTML = profs.map(p => `<option value="${p.id}">M./Mme ${p.last_name}</option>`).join('');
+        if (currentUser.role === 'professeur') {
+          targetSelect.value = currentUser.id;
+        }
+      }
+      renderTimetable();
+    }
+
+    function renderTimetable() {
+      const type = document.getElementById('edt-filter-type').value;
+      const targetId = document.getElementById('edt-filter-target').value;
+      const hours = ['08:00:00', '09:00:00', '10:00:00', '11:00:00', '12:00:00', '13:00:00', '14:00:00', '15:00:00', '16:00:00'];
+      const container = document.getElementById('edt-container');
+
+      container.innerHTML = hours.map(hour => {
+        const label = hour.slice(0, 5).replace(':', 'h');
+        let cells = `<div class="p-3 text-xs font-bold text-slate-500 bg-slate-50 flex items-center justify-center border-r">${label}</div>`;
+
+        for (let day = 1; day <= 5; day++) {
+          const matches = allCourses.filter(c =>
+            c.day_of_week === day &&
+            c.start_time === hour &&
+            (type === 'classe' ? c.class_id === targetId : c.teacher_id === targetId)
+          );
+
+          const cellContent = matches.map(c => {
+            const subj = allSubjects.find(s => s.id === c.subject_id);
+            const prof = allUsers.find(u => u.id === c.teacher_id);
+            const cls = allClasses.find(cl => cl.id === c.class_id);
+            const grp = allGroups.find(g => g.id === c.group_id);
+            const room = allRooms.find(r => r.id === c.room_id);
+
+            return `
+              <div class="rounded-lg p-1.5 text-white text-xs shadow-sm mb-1" style="background-color: ${subj ? subj.color : '#4f46e5'}">
+                <div class="font-bold flex justify-between">
+                  <span>${subj ? subj.name : 'Cours'}</span>
+                  ${grp ? `<span class="bg-black/25 px-1.5 rounded text-[10px]">[${grp.name}]</span>` : ''}
+                </div>
+                <div class="opacity-90 text-[11px]">${type === 'classe' ? (prof ? `M./Mme ${prof.last_name}` : '') : (cls ? cls.name : '')}</div>
+                <div class="opacity-80 text-[10px] italic">${room ? room.name : ''}</div>
+              </div>
+            `;
+          }).join('');
+
+          cells += `<div class="p-1.5 border-r min-h-[68px]">${cellContent}</div>`;
+        }
+        return `<div class="grid grid-cols-6">${cells}</div>`;
+      }).join('');
+    }
+
+    function downloadEdtPDF() {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF('landscape');
+      const targetSelect = document.getElementById('edt-filter-target');
+      const title = targetSelect.options[targetSelect.selectedIndex]?.text || 'Emploi du temps';
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(16);
+      doc.text(`EMPLOI DU TEMPS - ${title}`, 14, 15);
+
+      const days = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi'];
+      days.forEach((d, idx) => {
+        doc.setFontSize(11);
+        doc.text(d, 40 + idx * 50, 28);
+      });
+
+      const type = document.getElementById('edt-filter-type').value;
+      const targetId = targetSelect.value;
+      const hours = ['08:00:00', '09:00:00', '10:00:00', '11:00:00', '13:00:00', '14:00:00', '15:00:00', '16:00:00'];
+
+      hours.forEach((h, hIdx) => {
+        const y = 38 + hIdx * 20;
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(10);
+        doc.text(h.slice(0, 5), 14, y);
+
+        for (let day = 1; day <= 5; day++) {
+          const x = 40 + (day - 1) * 50;
+          doc.rect(x - 2, y - 6, 48, 18);
+          const c = allCourses.find(course =>
+            course.day_of_week === day &&
+            course.start_time === h &&
+            (type === 'classe' ? course.class_id === targetId : course.teacher_id === targetId)
+          );
+          if (c) {
+            const subj = allSubjects.find(s => s.id === c.subject_id);
+            const grp = allGroups.find(g => g.id === c.group_id);
+            const room = allRooms.find(r => r.id === c.room_id);
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(9);
+            doc.text(`${subj ? subj.name : ''} ${grp ? '[' + grp.name + ']' : ''}`, x, y);
+            doc.setFont("helvetica", "normal");
+            doc.setFontSize(8);
+            doc.text(`${room ? room.name : ''}`, x, y + 6);
+          }
+        }
+      });
+
+      doc.save(`EDT_${title.replace(/\s+/g, '_')}.pdf`);
+    }
+
+    // =========================================================================
+    // MESSAGERIE INTERNE
+    // =========================================================================
+    document.getElementById('send-msg-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const receiver_id = document.getElementById('msg-receiver').value;
+      const subject = document.getElementById('msg-subject').value.trim();
+      const body = document.getElementById('msg-body').value.trim();
+
+      await supabaseClient.from('messages').insert({
+        sender_id: currentUser.id, receiver_id, subject, body
+      });
+
+      document.getElementById('msg-subject').value = '';
+      document.getElementById('msg-body').value = '';
+      loadMessages();
+      alert("Message envoyé !");
+    });
+
+    async function loadMessages() {
+      const { data } = await supabaseClient
+        .from('messages')
+        .select('*')
+        .eq('receiver_id', currentUser.id)
+        .order('created_at', { ascending: false });
+
+      const list = data || [];
+      const container = document.getElementById('inbox-list');
+      if (!list.length) {
+        container.innerHTML = `<p class="text-sm text-slate-400">Aucun message reçu.</p>`;
+        return;
+      }
+
+      container.innerHTML = list.map(m => {
+        const sender = allUsers.find(u => u.id === m.sender_id);
+        return `
+          <div class="p-3 border rounded-lg bg-slate-50">
+            <div class="flex justify-between text-xs text-slate-500 mb-1">
+              <span class="font-bold text-indigo-700">De : ${sender ? `${sender.last_name} ${sender.first_name} (${sender.role})` : 'Utilisateur'}</span>
+              <span>${new Date(m.created_at).toLocaleString('fr-FR')}</span>
+            </div>
+            <div class="font-semibold text-sm text-slate-800">${m.subject}</div>
+            <p class="text-sm text-slate-600 mt-1 whitespace-pre-line">${m.body}</p>
+          </div>
+        `;
+      }).join('');
+    }
+  </script>
+</body>
+</html>
